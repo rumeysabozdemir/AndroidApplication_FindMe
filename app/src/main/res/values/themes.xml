@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Findme" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/ihlamurYesili</item>
+        <item name="colorPrimaryVariant">@color/ihlamurYesiliKoyu</item>
+        <item name="colorSecondary">@color/ihlamurYesiliAcik</item>
+        <item name="android:statusBarColor">@color/ihlamurYesiliKoyu</item>
+    </style>
+</resources>
