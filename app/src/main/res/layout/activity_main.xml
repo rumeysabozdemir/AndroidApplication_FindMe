@@ -26,5 +26,14 @@
         android:id="@+id/buttonSubmit"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Sorgula" />
+        android:text="Sorgula"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:id="@+id/locationTextView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Konum bilgisi burada görünecek"
+        android:textSize="16sp"
+        android:textColor="#000000" />
 </LinearLayout>
