@@ -5,15 +5,15 @@ import android.util.Log
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import com.example.findme.network.LocationApi
-import com.example.findme.model.LocationResponse
 import com.example.findme.database.DatabaseHelper
 import com.example.findme.model.CellInfo
 import com.example.findme.model.CellLocationResponse
 import com.example.findme.model.CellRequest
+import com.example.findme.model.PhoneNumberResponse
 import com.example.findme.network.OpenCellIDApi
 import com.example.findme.network.RetrofitClient
 import retrofit2.Call
@@ -24,8 +24,7 @@ import java.util.*
 
 class MainActivity : AppCompatActivity() {
     private lateinit var dbHelper: DatabaseHelper
-    private var ipAddress: String = "Bilinmiyor"
-    private var location: String = "Bilinmiyor"
+    private lateinit var textViewLocation: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,6 +35,8 @@ class MainActivity : AppCompatActivity() {
         val editText = findViewById<EditText>(R.id.editTextNumber)
         val checkBox = findViewById<CheckBox>(R.id.checkBoxAccept)
         val button = findViewById<Button>(R.id.buttonSubmit)
+        textViewLocation = findViewById(R.id.textViewLocation)
+
         val apiKey = RetrofitClient.getApiKey(this)
 
         checkBox.setOnCheckedChangeListener { _, isChecked ->
@@ -45,7 +46,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         button.setOnClickListener {
-            val phoneNumber = editText.text.toString()
+            val phoneNumber = editText.text.toString().trim()
             val agreementAccepted = checkBox.isChecked
 
             if (phoneNumber.isEmpty()) {
@@ -55,13 +56,13 @@ class MainActivity : AppCompatActivity() {
             } else if (!agreementAccepted) {
                 Toast.makeText(this, "Şartları kabul etmelisiniz", Toast.LENGTH_SHORT).show()
             } else {
-                fetchCellLocation(apiKey, phoneNumber)
-                fetchLocationData(phoneNumber)
+                fetchCellLocation(apiKey, phoneNumber)  // Telefon numarasını da gönder
+                validatePhoneNumber(phoneNumber)  // Girilen telefon numarasını doğrulama
             }
         }
     }
 
-    // Sadece bir tane fetchCellLocation() fonksiyonu olsun
+    // 📌 1. OpenCellID API: Cihazın lokasyon ve IP bilgilerini almak ve veritabanına kaydetmek
     private fun fetchCellLocation(apiKey: String, phoneNumber: String) {
         val api = RetrofitClient.cellIdInstance.create(OpenCellIDApi::class.java)
         val cellRequest = CellRequest(
@@ -76,15 +77,12 @@ class MainActivity : AppCompatActivity() {
             override fun onResponse(call: Call<CellLocationResponse>, response: Response<CellLocationResponse>) {
                 if (response.isSuccessful) {
                     response.body()?.let {
-                        val country = "SabitDeger"  // Sabit değer
-                        val city = "SabitDeger"      // Sabit değer
                         val latitude = it.lat ?: 0.0
                         val longitude = it.lon ?: 0.0
-
-                        saveToDatabase(phoneNumber, ipAddress, country, city, latitude, longitude)
-                    } ?: Log.e("CellLocationResponse", "Response is null")
+                        saveToDatabase(phoneNumber, "Bilinmiyor", latitude, longitude)
+                    }
                 } else {
-                    Log.e("Cell API Error", "Error body: ${response.errorBody()?.string()}")
+                    Log.e("Cell API Error", "Baz istasyonu bilgisi alınamadı.")
                     Toast.makeText(this@MainActivity, "Baz istasyonu bilgisi alınamadı.", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -96,76 +94,76 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    // IP ve Lokasyon bilgilerini almak için API çağrısı
-    private fun fetchLocationData(phoneNumber: String) {
-        val api = RetrofitClient.ipInstance.create(LocationApi::class.java)
-        api.getLocation().enqueue(object : Callback<LocationResponse> {
-            override fun onResponse(call: Call<LocationResponse>, response: Response<LocationResponse>) {
+    // 📌 2. PhoneNumber API: Girilen telefon numarasının konum bilgilerini ekrana yazdırmak
+    private fun validatePhoneNumber(phoneNumber: String) {
+        val apiKey = RetrofitClient.getPhoneNumberApiKey(this)
+        val api = RetrofitClient.phoneNumberApi
+
+        api.validatePhoneNumber(apiKey, phoneNumber).enqueue(object : Callback<PhoneNumberResponse> {
+            override fun onResponse(call: Call<PhoneNumberResponse>, response: Response<PhoneNumberResponse>) {
                 if (response.isSuccessful) {
                     response.body()?.let {
-                        val ipAddress = it.query ?: "Bilinmiyor"
-                        val country = it.country ?: "Bilinmiyor"
-                        val city = it.city ?: "Bilinmiyor"
-                        val latitude = it.lat ?: 0.0
-                        val longitude = it.lon ?: 0.0
-
-                        saveToDatabase(phoneNumber, ipAddress, country, city, latitude, longitude)
-                    } ?: Toast.makeText(this@MainActivity, "Yanıt boş döndü.", Toast.LENGTH_SHORT).show()
+                        val country = it.country_name ?: "Bilinmiyor"
+                        val city = it.location ?: "Bilinmiyor"
+                        showResult(phoneNumber, country, city)
+                    }
                 } else {
-                    Toast.makeText(this@MainActivity, "API başarısız yanıt döndü: ${response.errorBody()?.string()}", Toast.LENGTH_LONG).show()
+                    Log.e("API Error", "API başarısız yanıt döndü.")
+                    Toast.makeText(this@MainActivity, "API başarısız yanıt döndü", Toast.LENGTH_SHORT).show()
                 }
             }
 
-            override fun onFailure(call: Call<LocationResponse>, t: Throwable) {
-                Log.e("IP API Error", "Error: ${t.message}")
-                Toast.makeText(this@MainActivity, "IP bilgisi alınamadı.", Toast.LENGTH_SHORT).show()
+            override fun onFailure(call: Call<PhoneNumberResponse>, t: Throwable) {
+                Log.e("API Error", "Error: ${t.message}")
+                Toast.makeText(this@MainActivity, "Numara doğrulanamadı.", Toast.LENGTH_SHORT).show()
             }
         })
     }
 
-private fun saveToDatabase(
-    phoneNumber: String,
-    ipAddress: String,
-    country: String,
-    city: String,
-    latitude: Double,
-    longitude: Double
-) {
-    val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    // 📌 Sonuçları ekrana yazdıran fonksiyon
+    private fun showResult(phoneNumber: String, country: String, city: String) {
+        val message = """
+            Telefon Numarası: $phoneNumber
+            Ülke: $country
+            Şehir: $city
+        """.trimIndent()
 
-    val id = dbHelper.insertQueryLog(
-        timestamp = timestamp,
-        ipAddress = ipAddress,
-        country = country,
-        city = city,
-        latitude = latitude,
-        longitude = longitude,
-        phoneNumber = phoneNumber,
-        agreementAccepted = true
-    )
-
-    if (id != -1L) {
-        Toast.makeText(this, "Veri başarıyla kaydedildi.", Toast.LENGTH_SHORT).show()
-    } else {
-        Toast.makeText(this, "Veritabanı hatası.", Toast.LENGTH_SHORT).show()
+        textViewLocation.text = message
     }
-}
 
-    private fun isValidPhoneNumber(number: String): Boolean {
-        if (!number.matches("\\d{10,11}".toRegex())) return false
+    // 📌 Veritabanına kayıt fonksiyonu
+    private fun saveToDatabase(
+        phoneNumber: String,
+        ipAddress: String,
+        latitude: Double,
+        longitude: Double
+    ) {
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 
-        var count = 1
-        for (i in 1 until number.length) {
-            if (number[i] == number[i - 1]) {
-                count++
-                if (count > 5) return false
-            } else {
-                count = 1
-            }
+        val id = dbHelper.insertQueryLog(
+            timestamp = timestamp,
+            ipAddress = ipAddress,
+            country = "Bilinmiyor",
+            city = "Bilinmiyor",
+            latitude = latitude,
+            longitude = longitude,
+            phoneNumber = phoneNumber,
+            agreementAccepted = true
+        )
+
+        if (id != -1L) {
+            Toast.makeText(this, "Veri başarıyla kaydedildi.", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Veritabanı hatası.", Toast.LENGTH_SHORT).show()
         }
-        return true
     }
 
+    // 📌 Telefon numarası doğrulama fonksiyonu
+    private fun isValidPhoneNumber(number: String): Boolean {
+        return number.matches("\\+\\d{12,14}".toRegex())
+    }
+
+    // 📌 Şartlar ve Koşullar Dialog'u
     private fun showAgreementDialog() {
         val dialog = AlertDialog.Builder(this)
             .setTitle("Şartlar ve Koşullar")
