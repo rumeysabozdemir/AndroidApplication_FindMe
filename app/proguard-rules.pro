@@ -47,3 +47,4 @@
 # Additional rules for avoiding runtime issues with hidden APIs
 -dontwarn android.os.**
 -dontwarn dalvik.system.**
+-dontwarn retrofit2.**
